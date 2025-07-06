@@ -1,6 +1,6 @@
-# Guia Definitivo v2.1 (Completo): FreePBX 17 Bare Metal no Raspberry Pi 5 (Debian 12)
+# Guia Final e Vitorioso: FreePBX 17 Bare Metal no Raspberry Pi 5 (Debian 12)
 
-Este guia consolida o passo a passo completo e assertivo para instalar o FreePBX 17 em um Raspberry Pi 5 rodando o sistema operacional Debian 12 ("Bookworm") 64-bit. A estratégia central deste guia é unificar as permissões, fazendo com que o Asterisk e o servidor web Apache rodem sob o mesmo usuário (`asterisk`) para eliminar todos os conflitos.
+Este guia consolida o passo a passo completo e assertivo para instalar o FreePBX 17 em um Raspberry Pi 5 rodando Debian 12 ("Bookworm") 64-bit. Inclui todas as correções de dependências e permissões descobertas para garantir uma instalação estável e persistente.
 
 ### Pré-requisito
 
@@ -11,43 +11,42 @@ Este guia consolida o passo a passo completo e assertivo para instalar o FreePBX
 
 ## Fase 1: Preparação do Sistema
 
-1.  **Atualize completamente o sistema:**
+1.  **Atualize o sistema:**
     ```bash
     sudo apt update && sudo apt upgrade -y
     ```
 
 2.  **Instale todas as dependências de uma só vez:**
     ```bash
-    sudo apt install -y build-essential git curl wget libnewt-dev libssl-dev libncurses5-dev subversion libsqlite3-dev libjansson-dev libxml2-dev libsrtp2-dev uuid-dev sox nodejs npm
+    sudo apt install -y build-essential git curl wget libnewt-dev libssl-dev libncurses5-dev subversion libsqlite3-dev libjansson-dev libxml2-dev libsrtp2-dev uuid-dev sox nodejs npm incron
     ```
 
 ---
 
 ## Fase 2: Configuração dos Serviços Base (Apache, MariaDB, PHP)
 
-1.  **Instale Apache e MariaDB:**
+1.  **Instale os serviços web e de banco de dados:**
     ```bash
     sudo apt install -y apache2 mariadb-server
     ```
 
-2.  **Instale o PHP 8.2 e todas as extensões:**
+2.  **Instale o PHP 8.2 e suas extensões:**
     ```bash
     sudo apt install -y php php-mysql php-cli php-common php-gd php-mbstring php-xml php-curl php-json php-pear php-bcmath php-zip
     ```
 
-3.  **Proteja a instalação do banco de dados:**
+3.  **Proteja a instalação do MariaDB:**
     ```bash
     sudo mysql_secure_installation
     ```
-    > **IMPORTANTE:** Crie uma **senha de root forte** para o MariaDB e anote-a. Responda **Sim (Y)** para todas as outras perguntas.
+    > **IMPORTANTE:** Crie uma **senha de root forte** para o MariaDB e anote-a. Responda **Sim (Y)** para as outras perguntas.
 
 4.  **Configure o Apache para rodar como o usuário `asterisk`:**
     ```bash
     sudo nano /etc/apache2/envvars
     ```
-    > Altere as duas linhas a seguir:
-    > `export APACHE_RUN_USER=www-data` -> `export APACHE_RUN_USER=asterisk`
-    > `export APACHE_RUN_GROUP=www-data` -> `export APACHE_RUN_GROUP=asterisk`
+    > Altere `APACHE_RUN_USER=www-data` para `APACHE_RUN_USER=asterisk`
+    > Altere `APACHE_RUN_GROUP=www-data` para `APACHE_RUN_GROUP=asterisk`
 
 5.  **Ajuste outras configurações do Apache e PHP:**
     ```bash
@@ -62,7 +61,7 @@ Este guia consolida o passo a passo completo e assertivo para instalar o FreePBX
 
 ## Fase 3: Compilação e Instalação do Asterisk
 
-1.  **Baixe e extraia o código-fonte do Asterisk 20:**
+1.  **Baixe e extraia o Asterisk 20:**
     ```bash
     cd /usr/src/
     sudo wget [http://downloads.asterisk.org/pub/telephony/asterisk/asterisk-20-current.tar.gz](http://downloads.asterisk.org/pub/telephony/asterisk/asterisk-20-current.tar.gz)
@@ -76,13 +75,13 @@ Este guia consolida o passo a passo completo e assertivo para instalar o FreePBX
     sudo contrib/scripts/install_prereq install
     sudo ./configure
     sudo make menuselect # Pressione F12 para Salvar e Sair
-    sudo make # Este comando pode demorar muitos minutos
+    sudo make # Aviso: Este comando demora
     sudo make install
     sudo make samples
     sudo make config
     ```
 
-3.  **Crie o usuário `asterisk` e defina as permissões base:**
+3.  **Crie o usuário e grupo `asterisk`:**
     ```bash
     sudo groupadd asterisk
     sudo useradd -r -d /var/lib/asterisk -g asterisk asterisk
@@ -95,7 +94,7 @@ Este guia consolida o passo a passo completo e assertivo para instalar o FreePBX
 
 ## Fase 4: Instalação do FreePBX 17
 
-1.  **Baixe o código-fonte do FreePBX 17 usando `git`:**
+1.  **Baixe o código-fonte do FreePBX 17 via `git`:**
     ```bash
     cd /usr/src/
     sudo rm -rf freepbx
@@ -112,7 +111,7 @@ Este guia consolida o passo a passo completo e assertivo para instalar o FreePBX
 
 ---
 
-## Fase 5: Finalização e Ajustes Pós-Instalação ("Lições Aprendidas")
+## Fase 5: Finalização e Ajustes Pós-Instalação
 
 1.  **Instale o IonCube Loader:**
     ```bash
@@ -128,16 +127,42 @@ Este guia consolida o passo a passo completo e assertivo para instalar o FreePBX
 2.  **Instale os Módulos e Corrija as Permissões Finais:**
     ```bash
     cd /usr/src/freepbx
+    sudo fwconsole ma downloadinstall sysadmin
+    sudo fwconsole ma downloadinstall firewall
     sudo fwconsole ma installall
     sudo fwconsole chown
-
-    # Correção explícita para o erro do "Apply Config"
-    sudo chown -R asterisk:asterisk /var/run/asterisk
-    sudo chmod -R 775 /var/run/asterisk
-
-    # Recarrega e reinicia tudo para finalizar
     sudo fwconsole reload
+    ```
+    
+3.  **Crie os Scripts de Inicialização Automática Permanentes:**
+    ```bash
+    # Para o erro "Apply Config"
+    sudo systemctl edit asterisk.service
+    ```
+    > Cole o seguinte conteúdo, salve e saia:
+    > ```ini
+    > [Service]
+    > User=asterisk
+    > Group=asterisk
+    > RuntimeDirectory=asterisk
+    > RuntimeDirectoryMode=0775
+    > ```
+
+    ```bash
+    # Para o UCP Daemon teimoso
+    sudo systemctl edit freepbx.service
+    ```
+    > Cole o seguinte conteúdo, salve e saia. *Nota: `freepbx.service` é o nome correto do serviço principal.*
+    > ```ini
+    > [Service]
+    > ExecStartPost=/bin/bash -c "sleep 20 && /usr/sbin/fwconsole start ucp"
+    > ```
+
+4.  **Aplique todas as mudanças de serviço e reinicie:**
+    ```bash
+    sudo systemctl daemon-reload
     sudo systemctl restart asterisk
+    sudo systemctl restart freepbx
     sudo systemctl restart apache2
     ```
 
@@ -145,6 +170,4 @@ Este guia consolida o passo a passo completo e assertivo para instalar o FreePBX
 
 ## Fase 6: Acesso Final
 
-Abra seu navegador e acesse o endereço IP do seu Raspberry Pi: `http://<IP_DO_SEU_PI>`.
-
-O sistema estará 100% funcional.
+Abra seu navegador e acesse o endereço IP do seu Raspberry Pi: `http://<IP_DO_SEU_PI>`. O sistema estará 100% funcional e robusto.
